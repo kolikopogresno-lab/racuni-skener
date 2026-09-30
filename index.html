@@ -112,6 +112,8 @@ document.getElementById("dugme");
 
 var skeniranje = false;
 
+var obrada = false;
+
 var stream = null;
 
 var zxingReader = null;
@@ -120,12 +122,12 @@ var zxingControls = null;
 
 
 /* =====================================
-   POKRETANJE
+   POKRETANJE KAMERE
    ===================================== */
 
 async function pokreniKameru() {
 
-  if (skeniranje) {
+  if (skeniranje || obrada) {
     return;
   }
 
@@ -136,38 +138,47 @@ async function pokreniKameru() {
   poruka.innerHTML =
     "📷 Pokrećem zadnju kameru...";
 
+
   try {
 
-    stream = await navigator.mediaDevices.getUserMedia({
+    /*
+      Ako kamera već postoji,
+      NE pokrećemo je ponovo.
+    */
 
-      video: {
-        facingMode: {
-          ideal: "environment"
-        },
+    if (!stream) {
 
-        width: {
-          ideal: 1920
-        },
+      stream =
+        await navigator.mediaDevices.getUserMedia({
 
-        height: {
-          ideal: 1080
-        },
+          video: {
+            facingMode: {
+              ideal: "environment"
+            },
 
-        frameRate: {
-          ideal: 30
-        },
+            width: {
+              ideal: 1920
+            },
 
-        focusMode: "continuous"
-      },
+            height: {
+              ideal: 1080
+            },
 
-      audio: false
+            frameRate: {
+              ideal: 30
+            }
+          },
 
-    });
+          audio: false
+
+        });
 
 
-    video.srcObject = stream;
+      video.srcObject = stream;
 
-    await video.play();
+      await video.play();
+
+    }
 
 
     poruka.innerHTML =
@@ -176,6 +187,11 @@ async function pokreniKameru() {
       "i drži ga mirno.";
 
 
+    /*
+      Ako postoji BarcodeDetector,
+      prvo njega koristimo.
+    */
+
     if ("BarcodeDetector" in window) {
 
       try {
@@ -183,7 +199,9 @@ async function pokreniKameru() {
         var podrzani =
           await BarcodeDetector.getSupportedFormats();
 
-        if (podrzani.indexOf("qr_code") !== -1) {
+        if (
+          podrzani.indexOf("qr_code") !== -1
+        ) {
 
           pokreniNativeQR();
 
@@ -247,7 +265,10 @@ async function pokreniNativeQR() {
         await detector.detect(video);
 
 
-      if (kodovi && kodovi.length > 0) {
+      if (
+        kodovi &&
+        kodovi.length > 0
+      ) {
 
         var tekst =
           kodovi[0].rawValue;
@@ -291,6 +312,30 @@ async function pokreniNativeQR() {
 async function pokreniZXing() {
 
   try {
+
+    /*
+      Ako postoji stari čitač,
+      prvo ga zaustavljamo.
+    */
+
+    if (zxingControls) {
+
+      try {
+        zxingControls.stop();
+      } catch(e) {}
+
+      zxingControls = null;
+    }
+
+
+    if (zxingReader) {
+
+      try {
+        zxingReader.reset();
+      } catch(e) {}
+
+    }
+
 
     zxingReader =
       new ZXingBrowser.BrowserQRCodeReader();
@@ -351,10 +396,37 @@ function uspeh(qrUrl) {
     return;
   }
 
+
+  /*
+    Privremeno zaustavljamo samo
+    prepoznavanje QR-a.
+    
+    KAMERA OSTaje UKLJUČENA.
+  */
+
   skeniranje = false;
 
+  obrada = true;
 
-  zaustaviKameru();
+
+  if (zxingControls) {
+
+    try {
+      zxingControls.stop();
+    } catch(e) {}
+
+    zxingControls = null;
+
+  }
+
+
+  if (zxingReader) {
+
+    try {
+      zxingReader.reset();
+    } catch(e) {}
+
+  }
 
 
   poruka.innerHTML =
@@ -368,40 +440,19 @@ function uspeh(qrUrl) {
 
   document.getElementById("rezultat")
     .innerHTML =
-    "⏳ Učitavam podatke računa...";
+    "⏳ Račun se upisuje u Google tabelu...";
 
 
   /*
-     VAŽNA IZMENA:
-     Apps Script se sada otvara u NOVOM tabu.
-     Ova stranica sa skenerom ostaje otvorena.
+    Otvaramo Apps Script u ISTOM prozoru.
+    Posle obrade Apps Script će vratiti
+    korisnika na skener.
   */
 
-  window.open(
+  window.location.href =
     APPS_SCRIPT_URL +
     "?qr=" +
-    encodeURIComponent(qrUrl),
-    "_blank"
-  );
-
-
-  /*
-     Vraćamo dugme za sledeći račun.
-  */
-
-  setTimeout(function() {
-
-    dugme.disabled = false;
-
-    poruka.innerHTML =
-      "✅ Račun je poslat na obradu.<br><br>" +
-      "Možeš skenirati sledeći račun.";
-
-    document.getElementById("rezultat")
-      .innerHTML =
-      "📄 Račun se upisuje u Google tabelu.";
-
-  }, 1500);
+    encodeURIComponent(qrUrl);
 
 }
 
@@ -415,8 +466,11 @@ function zaustaviKameru() {
   try {
 
     if (zxingControls) {
+
       zxingControls.stop();
+
       zxingControls = null;
+
     }
 
   } catch(e) {}
@@ -425,8 +479,11 @@ function zaustaviKameru() {
   try {
 
     if (zxingReader) {
+
       zxingReader.reset();
+
       zxingReader = null;
+
     }
 
   } catch(e) {}
@@ -449,6 +506,41 @@ function zaustaviKameru() {
   } catch(e) {}
 
 }
+
+
+/*
+  Kada se korisnik vrati na skener,
+  ponovo pokrećemo prepoznavanje.
+  
+  Ako browser zadrži kameru,
+  koristićemo postojeći stream.
+*/
+
+window.addEventListener(
+  "pageshow",
+  function() {
+
+    obrada = false;
+
+    skeniranje = false;
+
+    dugme.disabled = false;
+
+    document.getElementById("rezultat")
+      .style.display = "none";
+
+
+    poruka.innerHTML =
+      "📷 Spreman za sledeći račun.";
+
+
+    /*
+      Ne pokrećemo automatski kameru.
+      Korisnik pritisne dugme.
+    */
+
+  }
+);
 
 </script>
 
