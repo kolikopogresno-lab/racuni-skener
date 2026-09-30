@@ -6,11 +6,11 @@
 <meta charset="UTF-8">
 
 <meta name="viewport"
-      content="width=device-width, initial-scale=1">
+      content="width=device-width, initial-scale=1, maximum-scale=1">
 
 <title>Skener računa</title>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.8"></script>
+<script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
 
 <style>
 
@@ -28,7 +28,7 @@ h2 {
 
 button {
   width: 100%;
-  padding: 16px;
+  padding: 17px;
   margin-top: 12px;
   font-size: 18px;
   border: 0;
@@ -37,17 +37,23 @@ button {
   color: white;
 }
 
-#reader {
+button:disabled {
+  background: #999;
+}
+
+#video {
   width: 100%;
   margin-top: 20px;
+  background: black;
+  border-radius: 8px;
 }
 
 #poruka {
   margin-top: 20px;
   padding: 15px;
   background: white;
-  word-break: break-word;
   text-align: center;
+  word-break: break-word;
 }
 
 #rezultat {
@@ -66,17 +72,20 @@ button {
 
 <h2>📷 Skeniranje računa</h2>
 
-<button type="button"
+<button id="dugme"
         onclick="pokreniKameru()">
 
 📷 SKENIRAJ KAMEROM
 
 </button>
 
-<div id="reader"></div>
+<video id="video"
+       playsinline
+       muted>
+</video>
 
 <div id="poruka">
-Izaberi kameru i usmeri je ka QR kodu računa.
+Klikni na dugme i usmeri zadnju kameru telefona prema QR kodu.
 </div>
 
 <div id="rezultat"></div>
@@ -84,135 +93,347 @@ Izaberi kameru i usmeri je ka QR kodu računa.
 
 <script>
 
-var skener = null;
-
-
-/* =========================
-   TVOJ APPS SCRIPT
-   ========================= */
+/* =====================================
+   APPS SCRIPT
+   ===================================== */
 
 var APPS_SCRIPT_URL =
 "https://script.google.com/macros/s/AKfycbzGIO_wqnYcT-Xbw_FgRkvxSFG3NhUlwppO1j8Z383SUT01KobEXG0CT9AcoYMt9ug05A/exec";
 
 
-/* =========================
-   KAMERA
-   ========================= */
+var video =
+document.getElementById("video");
 
-function pokreniKameru() {
+var poruka =
+document.getElementById("poruka");
 
-  document.getElementById("poruka").innerHTML =
-    "📷 Pokretanje kamere...";
+var dugme =
+document.getElementById("dugme");
 
-  if (skener) {
+var skeniranje = false;
 
-    try {
-      skener.stop();
-    } catch(e) {}
+var stream = null;
+
+var zxingReader = null;
+
+var zxingControls = null;
+
+
+/* =====================================
+   POKRETANJE
+   ===================================== */
+
+async function pokreniKameru() {
+
+  if (skeniranje) {
+    return;
+  }
+
+  skeniranje = true;
+
+  dugme.disabled = true;
+
+  poruka.innerHTML =
+    "📷 Pokrećem zadnju kameru...";
+
+  try {
+
+    stream = await navigator.mediaDevices.getUserMedia({
+
+      video: {
+        facingMode: {
+          ideal: "environment"
+        },
+
+        width: {
+          ideal: 1920
+        },
+
+        height: {
+          ideal: 1080
+        },
+
+        frameRate: {
+          ideal: 30
+        },
+
+        focusMode: "continuous"
+      },
+
+      audio: false
+
+    });
+
+
+    video.srcObject = stream;
+
+    await video.play();
+
+
+    poruka.innerHTML =
+      "🔍 Tražim QR kod...<br><br>" +
+      "Približi telefon QR kodu " +
+      "i drži ga mirno.";
+
+
+    /*
+       Prvo pokušavamo ugrađeni
+       BarcodeDetector.
+    */
+
+    if ("BarcodeDetector" in window) {
+
+      try {
+
+        var podrzani =
+          await BarcodeDetector.getSupportedFormats();
+
+        if (podrzani.indexOf("qr_code") !== -1) {
+
+          pokreniNativeQR();
+
+          return;
+
+        }
+
+      } catch(e) {
+
+        console.log(
+          "BarcodeDetector nije dostupan",
+          e
+        );
+
+      }
+
+    }
+
+
+    /*
+       Ako nema BarcodeDetector,
+       koristi se ZXing.
+    */
+
+    pokreniZXing();
 
   }
 
-  skener = new Html5Qrcode(
-    "reader",
-    {
-      verbose: false
-    }
-  );
+  catch(error) {
 
-  var config = {
+    skeniranje = false;
 
-    fps: 10,
+    dugme.disabled = false;
 
-    qrbox: function(width, height) {
-
-      var size =
-        Math.floor(
-          Math.min(width, height) * 0.85
-        );
-
-      return {
-        width: size,
-        height: size
-      };
-
-    },
-
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.QR_CODE
-    ]
-
-  };
-
-
-  skener.start(
-
-    {
-      facingMode: "environment"
-    },
-
-    config,
-
-    function(decodedText) {
-
-      obradiQR(decodedText);
-
-      try {
-        skener.stop();
-      } catch(e) {}
-
-    },
-
-    function(errorMessage) {
-
-      /* čeka QR kod */
-
-    }
-
-  )
-
-  .catch(function(error) {
-
-    document.getElementById("poruka").innerHTML =
-      "GREŠKA KAMERE:<br><br>" +
+    poruka.innerHTML =
+      "❌ Kamera nije dostupna.<br><br>" +
       error;
 
-  });
+  }
 
 }
 
 
-/* =========================
+/* =====================================
+   UGRAĐENI QR ČITAČ
+   ===================================== */
+
+async function pokreniNativeQR() {
+
+  var detector =
+    new BarcodeDetector({
+      formats: ["qr_code"]
+    });
+
+
+  async function proveriKadar() {
+
+    if (!skeniranje) {
+      return;
+    }
+
+
+    try {
+
+      var kodovi =
+        await detector.detect(video);
+
+
+      if (kodovi && kodovi.length > 0) {
+
+        var tekst =
+          kodovi[0].rawValue;
+
+
+        if (tekst) {
+
+          uspeh(tekst);
+
+          return;
+
+        }
+
+      }
+
+    }
+
+    catch(e) {
+
+      console.log(e);
+
+    }
+
+
+    requestAnimationFrame(
+      proveriKadar
+    );
+
+  }
+
+
+  proveriKadar();
+
+}
+
+
+/* =====================================
+   ZXING
+   ===================================== */
+
+async function pokreniZXing() {
+
+  try {
+
+    zxingReader =
+      new ZXingBrowser.BrowserQRCodeReader();
+
+
+    zxingControls =
+      await zxingReader.decodeFromVideoElement(
+        video,
+        function(result, error) {
+
+          if (!skeniranje) {
+            return;
+          }
+
+
+          if (result) {
+
+            var tekst =
+              result.getText();
+
+
+            if (tekst) {
+
+              uspeh(tekst);
+
+            }
+
+          }
+
+        }
+      );
+
+  }
+
+  catch(error) {
+
+    console.log(
+      "ZXing greška:",
+      error
+    );
+
+    poruka.innerHTML =
+      "🔍 Kamera radi, ali QR još nije očitan.<br><br>" +
+      "Drži QR kod unutar slike i približi ga telefonu.";
+
+  }
+
+}
+
+
+/* =====================================
    QR JE OČITAN
-   ========================= */
+   ===================================== */
 
-function obradiQR(qrUrl) {
+function uspeh(qrUrl) {
 
-  document.getElementById("poruka").innerHTML =
+  if (!skeniranje) {
+    return;
+  }
+
+  skeniranje = false;
+
+
+  zaustaviKameru();
+
+
+  poruka.innerHTML =
     "✓ QR KOD JE OČITAN!<br><br>" +
-    "Šaljem podatke sa računa...";
+    "Šaljem račun na obradu...";
 
 
-  var rezultat =
-    document.getElementById("rezultat");
+  document.getElementById("rezultat")
+    .style.display = "block";
 
-  rezultat.style.display = "block";
 
-  rezultat.innerHTML =
-    "⏳ Obrada računa...";
+  document.getElementById("rezultat")
+    .innerHTML =
+    "⏳ Učitavam podatke računa...";
 
 
   /*
-     Otvaramo Apps Script
-     i prosleđujemo QR URL.
+     Otvaramo Apps Script.
   */
 
-  var url =
+  window.location.href =
     APPS_SCRIPT_URL +
     "?qr=" +
     encodeURIComponent(qrUrl);
 
+}
 
-  window.location.href = url;
+
+/* =====================================
+   ZAUSTAVLJANJE KAMERE
+   ===================================== */
+
+function zaustaviKameru() {
+
+  try {
+
+    if (zxingControls) {
+      zxingControls.stop();
+      zxingControls = null;
+    }
+
+  } catch(e) {}
+
+
+  try {
+
+    if (zxingReader) {
+      zxingReader.reset();
+      zxingReader = null;
+    }
+
+  } catch(e) {}
+
+
+  try {
+
+    if (stream) {
+
+      stream.getTracks().forEach(
+        function(track) {
+          track.stop();
+        }
+      );
+
+      stream = null;
+
+    }
+
+  } catch(e) {}
 
 }
 
