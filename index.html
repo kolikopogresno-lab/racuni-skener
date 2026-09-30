@@ -8,7 +8,7 @@
 
 <title>Skener računa</title>
 
-<script src="https://unpkg.com/@zxing/library@0.21.3"></script>
+<script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
 
 <style>
 
@@ -39,6 +39,7 @@ video {
   width: 100%;
   margin-top: 20px;
   background: black;
+  border-radius: 8px;
 }
 
 #poruka {
@@ -46,7 +47,7 @@ video {
   padding: 15px;
   background: white;
   text-align: center;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 </style>
@@ -61,7 +62,7 @@ video {
   SKENIRAJ QR KOD
 </button>
 
-<video id="video" playsinline></video>
+<video id="video" autoplay muted playsinline></video>
 
 <div id="poruka">
   Pritisni dugme za pokretanje kamere.
@@ -70,8 +71,9 @@ video {
 <script>
 
 var codeReader = null;
+var controls = null;
 
-var videoElement =
+var video =
   document.getElementById("video");
 
 var poruka =
@@ -79,62 +81,86 @@ var poruka =
 
 
 document.getElementById("startButton")
-.addEventListener("click", function() {
+.addEventListener("click", async function() {
 
-  poruka.innerHTML =
-    "📷 Kamera radi — usmeri je prema QR kodu.";
+  try {
 
-  codeReader =
-    new ZXing.BrowserQRCodeReader();
-
-
-  codeReader.decodeFromConstraints(
-
-    {
-      video: {
-        facingMode: {
-          ideal: "environment"
-        },
-        width: {
-          ideal: 1920
-        },
-        height: {
-          ideal: 1080
-        }
-      }
-    },
-
-    videoElement,
-
-    function(result, error) {
-
-      if (result) {
-
-        var tekst =
-          result.getText();
-
-        poruka.innerHTML =
-          "<b>✓ QR KOD JE OČITAN!</b><br><br>" +
-          "<small>" +
-          tekst +
-          "</small>";
+    poruka.innerHTML =
+      "📷 Pokretanje kamere...";
 
 
-        codeReader.reset();
+    if (typeof ZXingBrowser === "undefined") {
 
-      }
+      throw new Error(
+        "QR biblioteka nije učitana."
+      );
 
     }
 
-  )
 
-  .catch(function(error) {
+    codeReader =
+      new ZXingBrowser.BrowserQRCodeReader();
+
 
     poruka.innerHTML =
-      "<b>GREŠKA:</b><br>" +
-      error;
+      "📷 Usmeri zadnju kameru prema QR kodu...";
 
-  });
+
+    controls =
+      await codeReader.decodeFromConstraints(
+
+        {
+          video: {
+            facingMode: {
+              ideal: "environment"
+            },
+            width: {
+              ideal: 1920
+            },
+            height: {
+              ideal: 1080
+            }
+          }
+        },
+
+        video,
+
+        function(result, error) {
+
+          if (result) {
+
+            var tekst =
+              result.getText();
+
+
+            poruka.innerHTML =
+              "<b>✓ QR KOD JE OČITAN!</b><br><br>" +
+              "<small>" +
+              tekst +
+              "</small>";
+
+
+            if (controls) {
+              controls.stop();
+            }
+
+          }
+
+        }
+
+      );
+
+  }
+
+  catch (error) {
+
+    poruka.innerHTML =
+      "<b>GREŠKA:</b><br><br>" +
+      error.name +
+      ": " +
+      error.message;
+
+  }
 
 });
 
