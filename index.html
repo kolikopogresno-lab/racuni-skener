@@ -3,12 +3,15 @@
 <html lang="sr">
 
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<meta name="viewport"
+   content="width=device-width, initial-scale=1">
 
 <title>Skener računa</title>
 
-<script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8"></script>
 
 <style>
 
@@ -27,7 +30,7 @@ h2 {
 button {
   width: 100%;
   padding: 16px;
-  margin-top: 15px;
+  margin-top: 12px;
   font-size: 18px;
   border: 0;
   border-radius: 8px;
@@ -35,19 +38,34 @@ button {
   color: white;
 }
 
-video {
+#reader {
   width: 100%;
   margin-top: 20px;
-  background: black;
-  border-radius: 8px;
+}
+
+#qr-input-file {
+  width: 100%;
+  padding: 15px;
+  margin-top: 12px;
+  font-size: 16px;
+  box-sizing: border-box;
+  background: white;
 }
 
 #poruka {
   margin-top: 20px;
   padding: 15px;
   background: white;
+  word-break: break-all;
   text-align: center;
-  word-break: break-word;
+}
+
+#rezultat {
+  margin-top: 15px;
+  padding: 15px;
+  background: white;
+  word-break: break-all;
+  display: none;
 }
 
 </style>
@@ -58,113 +76,213 @@ video {
 
 <h2>📷 Skeniranje računa</h2>
 
-<button id="startButton">
-  SKENIRAJ QR KOD
+<button type="button"
+     onclick="pokreniKameru()">
+
+📷 SKENIRAJ KAMEROM
+
 </button>
 
-<video id="video" autoplay muted playsinline></video>
+<div id="reader"></div>
+
+<input
+id="qr-input-file"
+type="file"
+accept="image/*"
+capture="environment">
 
 <div id="poruka">
-  Pritisni dugme za pokretanje kamere.
+
+Izaberi kameru ili slikaj QR kod.
+
 </div>
+
+<div id="rezultat"></div>
 
 <script>
 
-var codeReader = null;
-var controls = null;
-
-var video =
-  document.getElementById("video");
-
-var poruka =
-  document.getElementById("poruka");
+var skener = null;
 
 
-document.getElementById("startButton")
-.addEventListener("click", async function() {
+/* =========================
+   KAMERA
+   ========================= */
 
-  try {
+function pokreniKameru() {
 
-    poruka.innerHTML =
-      "📷 Pokretanje kamere...";
+  document.getElementById("poruka").innerHTML =
+    "📷 Pokretanje kamere...";
 
 
-    if (typeof ZXingBrowser === "undefined") {
+  if (skener) {
 
-      throw new Error(
-        "QR biblioteka nije učitana."
-      );
+    try {
+      skener.stop();
+    } catch(e) {}
+
+  }
+
+
+  skener =
+    new Html5Qrcode(
+      "reader",
+      {
+        verbose: false
+      }
+    );
+
+
+  var config = {
+
+    fps: 10,
+
+    qrbox: function(width, height) {
+
+      var size =
+        Math.floor(
+          Math.min(width, height) * 0.85
+        );
+
+      return {
+        width: size,
+        height: size
+      };
+
+    },
+
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE
+    ]
+
+  };
+
+
+  skener.start(
+
+    {
+      facingMode: "environment"
+    },
+
+    config,
+
+    function(decodedText) {
+
+      prikaziQR(decodedText);
+
+      skener.stop();
+
+    },
+
+    function(errorMessage) {
+
+      /* čeka QR */
+
+    }
+
+  )
+
+  .catch(function(error) {
+
+    document.getElementById("poruka").innerHTML =
+      "GREŠKA KAMERE:<br>" +
+      error;
+
+  });
+
+}
+
+
+/* =========================
+   SLIKA QR KODA
+   ========================= */
+
+document
+  .getElementById("qr-input-file")
+  .addEventListener("change", function(event) {
+
+
+    if (!event.target.files ||
+        event.target.files.length === 0) {
+
+      return;
 
     }
 
 
-    codeReader =
-      new ZXingBrowser.BrowserQRCodeReader();
+    var file =
+      event.target.files[0];
 
 
-    poruka.innerHTML =
-      "📷 Usmeri zadnju kameru prema QR kodu...";
+    document.getElementById("poruka").innerHTML =
+      "🔍 Čitam QR kod sa slike...";
 
 
-    controls =
-      await codeReader.decodeFromConstraints(
+    if (skener) {
 
-        {
-          video: {
-            facingMode: {
-              ideal: "environment"
-            },
-            width: {
-              ideal: 1920
-            },
-            height: {
-              ideal: 1080
-            }
-          }
-        },
+      try {
+        skener.clear();
+      } catch(e) {}
 
-        video,
-
-        function(result, error) {
-
-          if (result) {
-
-            var tekst =
-              result.getText();
+    }
 
 
-            poruka.innerHTML =
-              "<b>✓ QR KOD JE OČITAN!</b><br><br>" +
-              "<small>" +
-              tekst +
-              "</small>";
-
-
-            if (controls) {
-              controls.stop();
-            }
-
-          }
-
-        }
-
+    skener =
+      new Html5Qrcode(
+        "reader"
       );
 
-  }
 
-  catch (error) {
+    skener
+      .scanFile(file, true)
 
-    poruka.innerHTML =
-      "<b>GREŠKA:</b><br><br>" +
-      error.name +
-      ": " +
-      error.message;
+      .then(function(decodedText) {
 
-  }
+        prikaziQR(decodedText);
 
-});
+      })
+
+      .catch(function(error) {
+
+        document.getElementById("poruka").innerHTML =
+          "QR kod nije pronađen na slici.<br><br>" +
+          "Probaj ponovo i fotografiši samo QR kod.";
+
+      });
+
+  });
+
+
+/* =========================
+   REZULTAT
+   ========================= */
+
+function prikaziQR(tekst) {
+
+  document.getElementById("poruka").innerHTML =
+    "✓ QR KOD JE OČITAN!";
+
+
+  var rezultat =
+    document.getElementById("rezultat");
+
+
+  rezultat.style.display = "block";
+
+
+  rezultat.innerHTML =
+    "<b>QR sadržaj:</b><br><br>" +
+    tekst;
+
+
+  console.log(
+    "QR:",
+    tekst
+  );
+
+}
 
 </script>
 
 </body>
+
 </html>
