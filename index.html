@@ -1,24 +1,36 @@
 <!DOCTYPE html>
+
 <html lang="sr">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<meta name="viewport"
+   content="width=device-width, initial-scale=1">
 
 <title>Skener računa</title>
 
-<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8"></script>
 
 <style>
+
 body {
   font-family: Arial, sans-serif;
-  max-width: 500px;
+  max-width: 600px;
   margin: auto;
-  padding: 20px;
+  padding: 15px;
   background: #f5f5f5;
 }
 
 h2 {
   text-align: center;
+}
+
+#reader {
+  width: 100%;
+  margin-top: 20px;
+  background: black;
 }
 
 button {
@@ -32,16 +44,14 @@ button {
   color: white;
 }
 
-#reader {
-  margin-top: 20px;
-}
-
-#rezultat {
+#poruka {
   margin-top: 20px;
   padding: 15px;
   background: white;
   word-break: break-all;
+  text-align: center;
 }
+
 </style>
 
 </head>
@@ -56,49 +66,96 @@ button {
 
 <div id="reader"></div>
 
-<div id="rezultat"></div>
+<div id="poruka">
+  Usmeri kameru prema QR kodu na računu.
+</div>
 
 <script>
 
 var skener = null;
+var skeniranjeAktivno = false;
+
 
 function pokreniSkener() {
 
-  document.getElementById("rezultat").innerHTML =
-    "Pokretanje kamere...";
+  if (skeniranjeAktivno) {
+    return;
+  }
+
+  document.getElementById("poruka").innerHTML =
+    "📷 Usmeri QR kod u okvir...";
 
   skener = new Html5Qrcode("reader");
 
+  skeniranjeAktivno = true;
+
+
   skener.start(
+
     {
-      facingMode: "environment"
-    },
-    {
-      fps: 10,
-      qrbox: {
-        width: 250,
-        height: 250
+      facingMode: {
+        exact: "environment"
       }
+    },
+
+    {
+      fps: 15,
+
+      qrbox: function(width, height) {
+
+        var velicina =
+          Math.floor(Math.min(width, height) * 0.80);
+
+        return {
+          width: velicina,
+          height: velicina
+        };
+
+      },
+
+      aspectRatio: 1.0,
+
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.QR_CODE
+      ]
+
     },
 
     function(qrCodeMessage) {
 
-      document.getElementById("rezultat").innerHTML =
-        "<b>QR OČITAN:</b><br><br>" +
-        qrCodeMessage;
+      document.getElementById("poruka").innerHTML =
+        "✓ QR KOD JE OČITAN!<br><br>" +
+        "<small>" +
+        qrCodeMessage +
+        "</small>";
 
-      skener.stop();
+
+      skener.stop().then(function() {
+
+        skeniranjeAktivno = false;
+
+      }).catch(function() {
+
+        skeniranjeAktivno = false;
+
+      });
 
     },
 
     function(errorMessage) {
-      // čeka QR kod
+
+      // Kamera još traži QR kod.
+
     }
 
-  ).catch(function(error) {
+  )
 
-    document.getElementById("rezultat").innerHTML =
-      "<b>GREŠKA:</b><br>" +
+  .catch(function(error) {
+
+    skeniranjeAktivno = false;
+
+    document.getElementById("poruka").innerHTML =
+      "GREŠKA:<br>" +
       error;
 
   });
