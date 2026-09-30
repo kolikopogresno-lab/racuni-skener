@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Skener računa</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  max-width: 500px;
+  margin: auto;
+  padding: 20px;
+  background: #f5f5f5;
+}
+
+h2 {
+  text-align: center;
+}
+
+button {
+  width: 100%;
+  padding: 16px;
+  margin-top: 15px;
+  font-size: 18px;
+  border: 0;
+  border-radius: 8px;
+  background: #1a73e8;
+  color: white;
+}
+
+#reader {
+  margin-top: 20px;
+}
+
+#rezultat {
+  margin-top: 20px;
+  padding: 15px;
+  background: white;
+  word-break: break-all;
+}
+</style>
+
+</head>
+
+<body>
+
+<h2>📷 Skeniranje računa</h2>
+
+<button onclick="pokreniSkener()">
+  SKENIRAJ QR KOD
+</button>
+
+<div id="reader"></div>
+
+<div id="rezultat"></div>
+
+<script>
+
+var skener = null;
+
+function pokreniSkener() {
+
+  document.getElementById("rezultat").innerHTML =
+    "Pokretanje kamere...";
+
+  skener = new Html5Qrcode("reader");
+
+  skener.start(
+    {
+      facingMode: "environment"
+    },
+    {
+      fps: 10,
+      qrbox: {
+        width: 250,
+        height: 250
+      }
+    },
+
+    function(qrCodeMessage) {
+
+      document.getElementById("rezultat").innerHTML =
+        "<b>QR OČITAN:</b><br><br>" +
+        qrCodeMessage;
+
+      skener.stop();
+
+    },
+
+    function(errorMessage) {
+      // čeka QR kod
+    }
+
+  ).catch(function(error) {
+
+    document.getElementById("rezultat").innerHTML =
+      "<b>GREŠKA:</b><br>" +
+      error;
+
+  });
+
+}
+
+</script>
+
+</body>
+</html>
