@@ -2,10 +2,16 @@
 <html lang="sr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
   <title>SKENIRAJ RAČUN</title>
 
   <style>
+
     body {
       font-family: Arial, sans-serif;
       text-align: center;
@@ -33,14 +39,24 @@
       font-weight: bold;
     }
 
-    button {
-      margin-top: 20px;
-      padding: 14px 25px;
-      font-size: 18px;
+    #startButton {
+      display: block;
+      width: 100%;
+      max-width: 400px;
+      margin: 30px auto;
+      padding: 18px;
+      font-size: 22px;
+      font-weight: bold;
       border: none;
-      border-radius: 8px;
-      cursor: pointer;
+      border-radius: 10px;
+      background: #222;
+      color: white;
     }
+
+    #startButton:active {
+      transform: scale(0.98);
+    }
+
   </style>
 </head>
 
@@ -48,9 +64,19 @@
 
   <h1>🧾 SKENIRAJ RAČUN</h1>
 
+  <button
+    id="startButton"
+    onclick="pokreniKameru()"
+  >
+    📷 SKENIRAJ SLEDEĆI RAČUN
+  </button>
+
   <div id="reader"></div>
 
-  <div id="poruka">Pokrećem kameru...</div>
+  <div id="poruka">
+    Pritisni dugme za pokretanje kamere
+  </div>
+
 
   <script type="module">
 
@@ -66,30 +92,67 @@
 
 
     var codeReader = null;
+
     var controls = null;
-    var skeniranje = false;
+
+    var kameraRadi = false;
+
+    var vecSkenirano = false;
 
 
     function poruka(tekst) {
-      document.getElementById("poruka").innerText = tekst;
+
+      document.getElementById(
+        "poruka"
+      ).innerText = tekst;
+
+    }
+
+
+    function dugme(tekst, prikazi) {
+
+      var b =
+        document.getElementById(
+          "startButton"
+        );
+
+      b.innerText = tekst;
+
+      b.style.display =
+        prikazi ? "block" : "none";
+
     }
 
 
     async function pokreniKameru() {
 
-      if (skeniranje) {
+      // Sprečava ponovno pokretanje
+      // dok kamera već radi.
+      if (kameraRadi) {
         return;
       }
 
-      skeniranje = true;
 
-      poruka("Pokrećem kameru...");
+      kameraRadi = true;
+
+      vecSkenirano = false;
+
+
+      dugme(
+        "",
+        false
+      );
+
+
+      poruka(
+        "Pokrećem kameru..."
+      );
 
 
       try {
 
         // Ako je prethodna kamera ostala aktivna,
-        // prvo je potpuno zaustavljamo.
+        // potpuno je zaustavljamo.
         if (controls) {
 
           try {
@@ -113,7 +176,9 @@
           new BrowserMultiFormatReader();
 
 
-        poruka("Usmeri kameru na QR kod računa");
+        poruka(
+          "Usmeri kameru na QR kod računa"
+        );
 
 
         controls =
@@ -123,9 +188,7 @@
               audio: false,
 
               video: {
-                facingMode: {
-                  ideal: "environment"
-                },
+                facingMode: "environment",
 
                 width: {
                   ideal: 1280
@@ -137,15 +200,23 @@
               }
             },
 
-            document.getElementById("reader"),
+            document.getElementById(
+              "reader"
+            ),
 
             function(result, error) {
 
-              if (result) {
 
-                obradiQR(result.getText());
+              if (result && !vecSkenirano) {
+
+                vecSkenirano = true;
+
+                obradiQR(
+                  result.getText()
+                );
 
               }
+
 
               if (
                 error &&
@@ -164,13 +235,24 @@
 
       catch (greska) {
 
-        console.error(greska);
-
-        poruka(
-          "❌ Kamera nije dostupna. Dozvoli pristup kameri."
+        console.error(
+          greska
         );
 
-        skeniranje = false;
+
+        kameraRadi = false;
+
+
+        poruka(
+          "❌ Kamera nije dostupna."
+        );
+
+
+        dugme(
+          "📷 POKUŠAJ PONOVO",
+          true
+        );
+
       }
 
     }
@@ -178,19 +260,16 @@
 
     function obradiQR(qrUrl) {
 
-      // Sprečavamo drugo očitavanje
-      // dok se prvi račun obrađuje.
-      if (!skeniranje) {
-        return;
-      }
 
-      skeniranje = false;
+      poruka(
+        "✅ QR očitan. Obrada računa..."
+      );
 
 
-      poruka("✅ QR očitan. Obrada računa...");
+      kameraRadi = false;
 
 
-      // ODMAH zaustavljamo kameru.
+      // Zaustavljamo kameru odmah.
       if (controls) {
 
         try {
@@ -198,6 +277,7 @@
         } catch (e) {}
 
         controls = null;
+
       }
 
 
@@ -210,54 +290,49 @@
       }
 
 
-      // Kratko čekamo da se kamera potpuno oslobodi,
-      // pa tek onda prelazimo na Apps Script.
-      setTimeout(function() {
+      // Sakrivamo video.
+      var reader =
+        document.getElementById(
+          "reader"
+        );
 
-        window.location.href =
-          APPS_SCRIPT_URL +
-          "?qr=" +
-          encodeURIComponent(qrUrl);
+      reader.innerHTML = "";
 
-      }, 300);
+
+      // Otvaramo Apps Script.
+      window.location.href =
+        APPS_SCRIPT_URL +
+        "?qr=" +
+        encodeURIComponent(
+          qrUrl
+        );
 
     }
 
 
-    // Pokretanje kamere svaki put kada se stranica učita.
+    // Ako se korisnik vrati na skener
+    // preko Chrome dugmeta BACK,
+    // pripremamo novu sesiju.
     window.addEventListener(
-      "load",
+      "pageshow",
       function() {
 
-        setTimeout(
-          pokreniKameru,
-          300
+        kameraRadi = false;
+
+        vecSkenirano = false;
+
+        dugme(
+          "📷 SKENIRAJ SLEDEĆI RAČUN",
+          true
+        );
+
+        poruka(
+          "Pritisni dugme za skeniranje"
         );
 
       }
     );
 
-
-    // Ako se stranica vrati iz pozadine,
-    // ponovo pokušavamo da pokrenemo kameru.
-    document.addEventListener(
-      "visibilitychange",
-      function() {
-
-        if (
-          document.visibilityState === "visible" &&
-          !skeniranje
-        ) {
-
-          setTimeout(
-            pokreniKameru,
-            500
-          );
-
-        }
-
-      }
-    );
 
   </script>
 
