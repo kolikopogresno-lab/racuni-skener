@@ -75,7 +75,7 @@ button:disabled {
 <button id="dugme"
         onclick="pokreniKameru()">
 
-📷 POKRENI KAMERU
+📷 SKENIRAJ KAMEROM
 
 </button>
 
@@ -93,6 +93,7 @@ Klikni na dugme i usmeri zadnju kameru telefona prema QR kodu.
 
 <script>
 
+
 /* =====================================
    APPS SCRIPT
    ===================================== */
@@ -102,7 +103,7 @@ var APPS_SCRIPT_URL =
 
 
 /* =====================================
-   PROMENLJIVE
+   ELEMENTI
    ===================================== */
 
 var video =
@@ -114,9 +115,13 @@ document.getElementById("poruka");
 var dugme =
 document.getElementById("dugme");
 
-var skeniranje = false;
+var rezultat =
+document.getElementById("rezultat");
 
-var obrada = false;
+
+/* =====================================
+   STANJE
+   ===================================== */
 
 var stream = null;
 
@@ -124,7 +129,9 @@ var zxingReader = null;
 
 var zxingControls = null;
 
-var animationFrame = null;
+var skeniranje = false;
+
+var slanje = false;
 
 
 /* =====================================
@@ -133,12 +140,10 @@ var animationFrame = null;
 
 async function pokreniKameru() {
 
-  if (skeniranje || obrada) {
+  if (skeniranje) {
     return;
   }
 
-
-  skeniranje = true;
 
   dugme.disabled = true;
 
@@ -150,10 +155,8 @@ async function pokreniKameru() {
   try {
 
     /*
-      KAMERU POKREĆEMO SAMO PRVI PUT.
-
-      Kod sledećih računa isti video stream
-      ostaje aktivan.
+      Kameru pokrećemo samo ako
+      još nije pokrenuta.
     */
 
     if (!stream) {
@@ -198,52 +201,15 @@ async function pokreniKameru() {
 
 
     /*
-      Prvo probamo ugrađeni čitač.
+      Pokrećemo QR čitač.
     */
 
-    if ("BarcodeDetector" in window) {
+    pokreniQR();
 
-      try {
-
-        var podrzani =
-          await BarcodeDetector.getSupportedFormats();
-
-        if (
-          podrzani.indexOf("qr_code") !== -1
-        ) {
-
-          pokreniNativeQR();
-
-          return;
-
-        }
-
-      }
-
-      catch(e) {
-
-        console.log(
-          "BarcodeDetector nije dostupan",
-          e
-        );
-
-      }
-
-    }
-
-
-    /*
-      Ako nema ugrađenog čitača,
-      koristimo ZXing.
-    */
-
-    pokreniZXing();
 
   }
 
   catch(error) {
-
-    skeniranje = false;
 
     dugme.disabled = false;
 
@@ -257,106 +223,54 @@ async function pokreniKameru() {
 
 
 /* =====================================
-   BARCODE DETECTOR
+   POKRETANJE QR ČITAČA
    ===================================== */
 
-async function pokreniNativeQR() {
+async function pokreniQR() {
 
-  var detector =
-    new BarcodeDetector({
-      formats: ["qr_code"]
-    });
+  /*
+    Ako postoji stari čitač,
+    zaustavljamo samo njegovo
+    skeniranje.
 
+    NE gasimo kameru.
+  */
 
-  async function proveriKadar() {
-
-    if (!skeniranje) {
-      return;
-    }
-
+  if (zxingControls) {
 
     try {
 
-      var kodovi =
-        await detector.detect(video);
-
-
-      if (
-        kodovi &&
-        kodovi.length > 0
-      ) {
-
-        var tekst =
-          kodovi[0].rawValue;
-
-
-        if (tekst) {
-
-          uspeh(tekst);
-
-          return;
-
-        }
-
-      }
+      zxingControls.stop();
 
     }
 
-    catch(e) {
+    catch(e) {}
 
-      console.log(e);
-
-    }
-
-
-    animationFrame =
-      requestAnimationFrame(
-        proveriKadar
-      );
+    zxingControls = null;
 
   }
 
 
-  proveriKadar();
+  skeniranje = true;
 
-}
-
-
-/* =====================================
-   ZXING
-   ===================================== */
-
-async function pokreniZXing() {
 
   try {
 
-    if (zxingControls) {
-
-      try {
-        zxingControls.stop();
-      }
-
-      catch(e) {}
-
-      zxingControls = null;
-
-    }
-
-
-    if (zxingReader) {
-
-      try {
-        zxingReader.reset();
-      }
-
-      catch(e) {}
-
-    }
-
+    /*
+      Novi QR reader.
+    */
 
     zxingReader =
       new ZXingBrowser.BrowserQRCodeReader();
 
+
+    /*
+      Čitamo postojeći video.
+
+      VAŽNO:
+      ovde NE tražimo novu kameru.
+      Koristimo isti video i isti stream.
+    */
 
     zxingControls =
       await zxingReader.decodeFromVideoElement(
@@ -370,13 +284,13 @@ async function pokreniZXing() {
 
           if (result) {
 
-            var tekst =
+            var qrUrl =
               result.getText();
 
 
-            if (tekst) {
+            if (qrUrl) {
 
-              uspeh(tekst);
+              qrPronadjen(qrUrl);
 
             }
 
@@ -389,6 +303,11 @@ async function pokreniZXing() {
 
   catch(error) {
 
+    skeniranje = false;
+
+    dugme.disabled = false;
+
+
     console.log(
       "ZXing greška:",
       error
@@ -396,8 +315,8 @@ async function pokreniZXing() {
 
 
     poruka.innerHTML =
-      "🔍 Kamera radi, ali QR još nije očitan.<br><br>" +
-      "Drži QR kod unutar slike i približi ga telefonu.";
+      "❌ QR čitač nije pokrenut.<br><br>" +
+      error;
 
   }
 
@@ -405,10 +324,10 @@ async function pokreniZXing() {
 
 
 /* =====================================
-   QR JE OČITAN
+   QR PRONAĐEN
    ===================================== */
 
-function uspeh(qrUrl) {
+function qrPronadjen(qrUrl) {
 
   if (!skeniranje) {
     return;
@@ -416,31 +335,31 @@ function uspeh(qrUrl) {
 
 
   /*
-    ODMAH zaustavljamo samo QR čitanje.
-
-    KAMERA OSTAjE UKLJUČENA.
+    Sprečavamo da isti QR bude
+    pročitan više puta dok traje obrada.
   */
 
   skeniranje = false;
 
-  obrada = true;
+  slanje = true;
 
 
-  if (animationFrame) {
+  /*
+    OVO JE VAŽNO:
 
-    cancelAnimationFrame(
-      animationFrame
-    );
+    Ne koristimo reset().
 
-    animationFrame = null;
+    Ne gasimo kameru.
 
-  }
-
+    Samo zaustavljamo QR skeniranje.
+  */
 
   if (zxingControls) {
 
     try {
+
       zxingControls.stop();
+
     }
 
     catch(e) {}
@@ -450,67 +369,40 @@ function uspeh(qrUrl) {
   }
 
 
-  if (zxingReader) {
-
-    try {
-      zxingReader.reset();
-    }
-
-    catch(e) {}
-
-  }
-
-
   poruka.innerHTML =
     "✓ QR KOD JE OČITAN!<br><br>" +
-    "⏳ Upisujem račun u tabelu...";
+    "⏳ Upisujem račun...";
+
+
+  rezultat.style.display =
+    "block";
+
+
+  rezultat.innerHTML =
+    "Račun se šalje u Google tabelu...";
 
 
   /*
-    Prikazujemo poruku.
+    Šaljemo QR URL Apps Script-u
+    bez napuštanja ove stranice.
   */
 
-  document.getElementById("rezultat")
-    .style.display = "block";
-
-
-  document.getElementById("rezultat")
-    .innerHTML =
-    "Račun se šalje na obradu.";
-
-
-  /*
-    NAJVAŽNIJA IZMENA:
-
-    Ne koristimo window.location.href.
-
-    Stranica skenera ostaje otvorena.
-
-    Apps Script dobija QR URL u pozadini.
-  */
-
-  posaljiNaAppsScript(qrUrl);
+  posaljiRacun(qrUrl);
 
 }
 
 
 /* =====================================
-   SLANJE QR-a U APPS SCRIPT
+   SLANJE RAČUNA
    ===================================== */
 
-function posaljiNaAppsScript(qrUrl) {
+function posaljiRacun(qrUrl) {
 
   var url =
     APPS_SCRIPT_URL +
     "?qr=" +
     encodeURIComponent(qrUrl);
 
-
-  /*
-    fetch sa no-cors režimom omogućava
-    da pošaljemo GET zahtev bez napuštanja
-    stranice skenera.
-  */
 
   fetch(
     url,
@@ -522,23 +414,23 @@ function posaljiNaAppsScript(qrUrl) {
   )
   .then(function() {
 
-    pripremiSledeciSken();
+    spremanZaSledeci();
 
   })
   .catch(function(error) {
 
     console.log(
-      "Greška pri slanju:",
+      "Greška slanja:",
       error
     );
 
+
     /*
-      Čak i ako browser ne dozvoli
+      I u slučaju da browser ne dozvoli
       čitanje odgovora, zahtev je poslat.
-      Zato pripremamo sledeće skeniranje.
     */
 
-    pripremiSledeciSken();
+    spremanZaSledeci();
 
   });
 
@@ -546,94 +438,71 @@ function posaljiNaAppsScript(qrUrl) {
 
 
 /* =====================================
-   SLEDEĆI SKEN
+   SPREMAN ZA SLEDEĆI RAČUN
    ===================================== */
 
-function pripremiSledeciSken() {
+function spremanZaSledeci() {
 
   setTimeout(function() {
 
-    obrada = false;
-
-    skeniranje = false;
-
-    dugme.disabled = false;
-
-
-    document.getElementById("rezultat")
-      .innerHTML =
-      "✅ Račun je poslat.<br><br>" +
-      "Spreman za sledeći račun.";
-
+    slanje = false;
 
     poruka.innerHTML =
-      "📷 Spreman za sledeći račun.";
+      "📷 SPREMAN ZA SLEDEĆI RAČUN";
+
+
+    rezultat.innerHTML =
+      "✓ Račun je poslat.<br><br>" +
+      "Sada približi sledeći QR kod.";
 
 
     /*
-      KAMERA JE I DALJE UKLJUČENA.
+      Kamera je sve vreme uključena.
 
-      Samo ponovo pokrećemo
-      prepoznavanje QR koda.
+      Samo ponovo pokrećemo QR čitač.
     */
 
-    pokreniKameru();
+    dugme.disabled = false;
 
-  }, 1500);
+    pokreniQR();
+
+  }, 1200);
 
 }
 
 
 /* =====================================
-   ZAUSTAVLJANJE KAMERE
+   GAŠENJE KAMERE
    ===================================== */
 
-function zaustaviKameru() {
+function ugasiKameru() {
 
-  if (animationFrame) {
+  /*
+    Ovo trenutno ne pozivamo
+    tokom normalnog rada.
 
-    cancelAnimationFrame(
-      animationFrame
-    );
+    Kamera ostaje uključena između
+    dva računa.
+  */
 
-    animationFrame = null;
+  if (zxingControls) {
 
-  }
-
-
-  try {
-
-    if (zxingControls) {
+    try {
 
       zxingControls.stop();
 
-      zxingControls = null;
-
     }
+
+    catch(e) {}
+
+    zxingControls = null;
 
   }
 
-  catch(e) {}
 
+  if (stream) {
 
-  try {
-
-    if (zxingReader) {
-
-      zxingReader.reset();
-
-      zxingReader = null;
-
-    }
-
-  }
-
-  catch(e) {}
-
-
-  try {
-
-    if (stream) {
+    try {
 
       stream.getTracks().forEach(
         function(track) {
@@ -643,15 +512,16 @@ function zaustaviKameru() {
         }
       );
 
-      stream = null;
-
     }
+
+    catch(e) {}
+
+    stream = null;
 
   }
 
-  catch(e) {}
-
 }
+
 
 </script>
 
