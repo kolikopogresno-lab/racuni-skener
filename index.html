@@ -590,45 +590,29 @@ function posaljiRacun(qrUrl) {
     "?qr=" +
     encodeURIComponent(qrUrl);
 
+  fetch(url, {
+    method: "GET",
+    mode: "no-cors"
+  })
+  .then(function() {
 
-  /*
-    Koristimo iframe.
-    Ne prelazimo na Apps Script stranicu.
-  */
+    rezultat.innerHTML =
+      "✓ Račun je poslat u Google tabelu.<br><br>" +
+      "Pripremam sledeći račun...";
 
-  var iframe =
-    document.createElement("iframe");
+    setTimeout(function() {
+      spremanZaSledeci();
+    }, 2000);
 
+  })
+  .catch(function(error) {
 
-  iframe.style.display = "none";
+    rezultat.innerHTML =
+      "❌ Greška pri slanju računa.<br><br>" +
+      error;
 
-  iframe.src = url;
-
-
-  document.body.appendChild(iframe);
-
-
-  /*
-    Dajemo Apps Script-u vreme
-    da obradi račun.
-  */
-
-  setTimeout(function() {
-
-    try {
-
-      document.body.removeChild(iframe);
-
-    }
-
-    catch(e) {}
-
-    spremanZaSledeci();
-
-  }, 2000);
-
+  });
 }
-
 
 /* =====================================
    SLEDEĆI RAČUN
